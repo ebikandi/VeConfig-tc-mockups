@@ -1,0 +1,860 @@
+/**
+ *   Common Constants
+ *   Date: 22/11/2016
+ *   VeConfig
+ */
+'use strict';
+
+var VeConfigNav = VeConfigNav || {};
+
+VeConfigNav.Constants = {
+    ciBaseUrl: 'http://veconfig-ci.veinteractive.net',
+    currentCustomerEncryptedCookie: 'VeConfig_CurrentCustomerEncrypted',
+    currentCustomerNameCookie: 'VeConfig_CurrentCustomerName',
+    currentServerCookie: 'VeConfig_CurrentServer',
+    currentUserCookie: 'VeConfig_CurrentUser',
+    customersTemplatePath: window.location.origin + '/Content/app/templates/customers.hbs',
+    defaultServerDisplayName: 'UK Server',
+    defaultServerName: 'UK',
+    getRoleUrl: window.location.origin + '/authenticate/getrole',
+    getUserUrl: window.location.origin + '/authenticate/getusername',
+    leftMenuJsonPath: window.location.origin + '/Content/app/json/left-menu.json',
+    leftMenuTemplatePath: window.location.origin + '/Content/app/templates/left-menu.hbs',
+    moreCustomersTemplatePath: window.location.origin + '/Content/app/templates/more-customers.hbs',
+    recentCustomersCookie: 'VeConfig_RecentCustomers',
+    serversJsonPath: window.location.origin + '/Content/app/json/servers.json',
+    serversTemplatePath: window.location.origin + '/Content/app/templates/servers.hbs',
+    userRoleCookie: 'VeConfig_UserRole',
+    v1CurrentApiServerCookie: 'CurrentAPIServer'
+};
+; /**
+  *   Helpers Functions
+  *   Date: 01/11/2016
+  *   VeConfig
+  */
+'use strict';
+
+/* global Handlebars */
+
+var VeConfigNav = VeConfigNav || {};
+
+VeConfigNav.Helpers = function () {
+
+    /**
+     * Register Handlebar helper to check if element is in an array
+     */
+    var ifInArrayHandlebars = function ifInArrayHandlebars() {
+        Handlebars.registerHelper('ifInArray', function (elem, array, options) {
+            var found = false;
+
+            elem = elem.split(' ');
+            for (var i = 0, j = elem.length; !found && i < j; i++) {
+                if (array.indexOf(elem[i]) > -1) {
+                    found = true;
+                }
+            }
+
+            if (found) {
+                return options.fn(this);
+            }
+            return options.inverse(this);
+        });
+    },
+
+
+    /**
+     * Register Handlebar helper to check if two values are equal
+     */
+    ifConditionHandlebars = function ifConditionHandlebars() {
+        Handlebars.registerHelper('ifCond', function (val1, val2, options) {
+            if (val1 === val2) {
+                return options.fn(this);
+            }
+            return options.inverse(this);
+        });
+    },
+
+
+    /**
+     * Register Handlebar helper to get current url origin
+     */
+    currentUrlOrigin = function currentUrlOrigin() {
+        Handlebars.registerHelper('currentUrlOrigin', function () {
+            return window.location.origin;
+        });
+    },
+
+
+    /**
+     * Encode this URI Component
+     */
+    encodeThis = function encodeThis() {
+        Handlebars.registerHelper('encodeThis', function (val) {
+            return encodeURIComponent(val);
+        });
+    },
+
+
+    /**
+     * Load data from url or file path
+     * path {string}       - url or file path
+     */
+    loadDataFrom = function loadDataFrom(path, callback) {
+        var xobj = new XMLHttpRequest();
+
+        xobj.overrideMimeType('application/json');
+        xobj.open('GET', path, true);
+        xobj.onreadystatechange = function () {
+            if (xobj.readyState === 4 && xobj.status === 200) {
+                callback(xobj.responseText);
+            }
+        };
+        xobj.send(null);
+    },
+
+
+    /**
+     * Get url parameter value by key
+     * key {string}       - url parameter key
+     */
+    getParameterByName = function getParameterByName(key) {
+        var url = window.location.href,
+            regex = void 0,
+            results = void 0;
+
+        key = key.replace(/[\[\]]/g, '\\$&');
+        regex = new RegExp('[?&]' + key + '(=([^&#]*)|&|#|$)');
+        results = regex.exec(url);
+
+        if (!results) {
+            return null;
+        }
+        if (!results[2]) {
+            return '';
+        }
+        return decodeURIComponent(results[2].replace(/\+/g, ' '));
+    },
+
+
+    /**
+     * Wait after typing
+     */
+    delay = function () {
+        var timer = 0;
+
+        return function (callback, ms) {
+            clearTimeout(timer);
+            timer = setTimeout(callback, ms);
+        };
+    }();
+
+    return {
+        ifInArrayHandlebars: ifInArrayHandlebars,
+        ifConditionHandlebars: ifConditionHandlebars,
+        currentUrlOrigin: currentUrlOrigin,
+        encodeThis: encodeThis,
+        loadDataFrom: loadDataFrom,
+        getParameterByName: getParameterByName,
+        delay: delay
+    };
+}();
+; /**
+  *   Cookie Manager
+  *   Date: 21/11/2016
+  *   VeConfig
+  */
+'use strict';
+
+var VeConfigNav = VeConfigNav || {};
+
+VeConfigNav.CookieManager = function () {
+
+    /**
+     * Get cookie value by name
+     * name {string}       - cookie name
+     */
+    var getCookie = function getCookie(cookieName) {
+        var name = cookieName + '=',
+            cookieArray = document.cookie.split(';');
+
+        for (var i = 0; i < cookieArray.length; i++) {
+            var cookie = cookieArray[i];
+
+            while (cookie.charAt(0) === ' ') {
+                cookie = cookie.substring(1);
+            }
+            if (cookie.indexOf(name) === 0) {
+                return cookie.substring(name.length, cookie.length);
+            }
+        }
+
+        return '';
+    },
+
+
+    /**
+     * Set cookie method
+     * name {string}       - cookie name
+     * value {string}      - cookie value
+     * days {int}          - cookie expiration in days
+     */
+    setCookie = function setCookie(name, value, days) {
+        var expires = void 0,
+            date = new Date(),
+            domainParts = location.hostname.split('.'),
+            upperLevelDomain = domainParts.slice(-2).join('.');
+
+        if (days) {
+            date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
+            expires = ';expires=' + date.toGMTString();
+        } else {
+            expires = '';
+        }
+        document.cookie = name + '=' + value + expires + ';domain=.' + upperLevelDomain + ';path=/';
+    },
+
+
+    /**
+     * Delete cookie method
+     * name {string}    - cookie name
+     */
+    deleteCookie = function deleteCookie(name) {
+        var domainParts = location.hostname.split('.'),
+            upperLevelDomain = domainParts.slice(-2).join('.');
+
+        document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:01 GMT;domain=.' + upperLevelDomain + ';path=/';
+    },
+
+
+    /**
+     * Set the current server cookie
+     * name {string}       - server's name
+     * displayName {string} - server's display name
+     */
+    setCurrentServer = function setCurrentServer(name, displayName) {
+        setCookie(VeConfigNav.Constants.currentServerCookie, '{"ServerName": "' + name + '", "ServerDisplayName": "' + displayName + '"}');
+    },
+
+
+    /**
+     * Get current server from cookie or default
+     */
+    getCurrentServer = function getCurrentServer() {
+        var currentServerCookieValue = getCookie(VeConfigNav.Constants.currentServerCookie),
+            currentServerCookie = currentServerCookieValue !== '' ? JSON.parse(currentServerCookieValue) : JSON.parse('{"ServerName": "' + VeConfigNav.Constants.defaultServerName + '", "ServerDisplayName": "' + VeConfigNav.Constants.defaultServerDisplayName + '"}'),
+            server = VeConfigNav.Constants.defaultServerName;
+
+        if (currentServerCookie.ServerName) {
+            server = currentServerCookie.ServerName;
+        } else {
+            setCurrentServer(VeConfigNav.Constants.defaultServerName, VeConfigNav.Constants.defaultServerDisplayName);
+        }
+
+        return server;
+    },
+
+
+    /**
+     * Set current username cookie
+     */
+    setCurrentUser = function setCurrentUser() {
+        if (!getCookie(VeConfigNav.Constants.currentUserCookie)) {
+            var callback = function callback(resp) {
+                setCookie(VeConfigNav.Constants.currentUserCookie, resp);
+                document.getElementById('currentUsername').innerHTML = resp;
+            };
+
+            VeConfigNav.Helpers.loadDataFrom(VeConfigNav.Constants.getUserUrl, callback);
+        }
+        document.getElementById('currentUsername').innerHTML = getCookie(VeConfigNav.Constants.currentUserCookie);
+    };
+
+    return {
+        getCookie: getCookie,
+        setCookie: setCookie,
+        deleteCookie: deleteCookie,
+        setCurrentServer: setCurrentServer,
+        getCurrentServer: getCurrentServer,
+        setCurrentUser: setCurrentUser
+    };
+}();
+
+; /**
+  *   Left Menu Functions
+  *   Date: 28/10/2016
+  *   VeConfig
+  */
+'use strict';
+
+/* global Handlebars */
+
+var VeConfigNav = VeConfigNav || {};
+
+VeConfigNav.LeftMenu = function () {
+    /**
+     * Toggle submenu parent class
+     * e {object}       - event
+     */
+    var toggleSubmenu = function toggleSubmenu(e) {
+        e.preventDefault();
+
+        if (e.target.parentElement.classList.contains('open')) {
+            e.target.parentElement.classList.remove('open');
+        } else {
+            e.target.parentElement.classList.add('open');
+        }
+    },
+
+
+    /**
+     * Add click event to all submenus
+     */
+    setupSubmenus = function setupSubmenus() {
+        var submenus = document.getElementsByClassName('trigger-submenu');
+
+        if (submenus) {
+            for (var i = 0; i < submenus.length; i++) {
+                submenus[i].addEventListener('click', toggleSubmenu);
+            }
+        }
+    },
+
+
+    /**
+     * Set the role and is has selected customer from cookie in the navItems object
+     * navItems {object}       - navigation items object
+     * templateScript {method} - Handlebars method to populate left menu
+     */
+    setFromCookie = function setFromCookie(navItems, templateScript) {
+        var callback = function callback(resp) {
+            navItems.role = resp;
+            navItems.hasCustomerSelected = 'false';
+            if (VeConfigNav.CookieManager.getCookie(VeConfigNav.Constants.currentCustomerNameCookie)) {
+                navItems.hasCustomerSelected = 'true';
+            }
+
+            document.getElementById('navigationList').innerHTML = templateScript(navItems);
+            VeConfigNav.LeftMenu.setupSubmenus();
+        };
+
+        VeConfigNav.Helpers.loadDataFrom(VeConfigNav.Constants.getRoleUrl, callback);
+    },
+
+
+    /**
+     * Update left menu links with the current domain
+     * navItems {object}       - navigation items object
+     * templateScript {method} - Handlebars method to populate left menu
+     */
+    updateLinks = function updateLinks(navItems, templateScript) {
+        var domainUrl = window.location.origin,
+            v1DomainUrl = domainUrl.replace('veconfig', 'veconfigv1');
+
+        navItems.navItems.forEach(function (item) {
+            var itemDomain = item.v1 === 'true' ? v1DomainUrl : domainUrl;
+
+            item.link = itemDomain + item.link;
+            if (item.subItems) {
+                item.subItems.forEach(function (subItem) {
+                    itemDomain = subItem.v1 === 'true' ? v1DomainUrl : domainUrl;
+                    subItem.link = itemDomain + subItem.link;
+                });
+            }
+        });
+        setFromCookie(navItems, templateScript);
+    },
+
+
+    /**
+     * Set active state on current page
+     * navItems {object}       - navigation items object
+     * templateScript {method} - Handlebars method to populate left menu
+     */
+    setActiveState = function setActiveState(navItems, templateScript) {
+        var currentUrl = window.location.href.toLowerCase();
+
+        navItems.navItems.forEach(function (item) {
+            if (currentUrl.indexOf(item.activeIfContains.toLowerCase()) > -1) {
+                item.isActive = true;
+
+                if (item.subItems) {
+                    item.subItems.forEach(function (subItem) {
+                        if (currentUrl.indexOf(subItem.activeIfContains.toLowerCase()) > -1) {
+                            subItem.isActive = true;
+                        }
+                    });
+                }
+            }
+        });
+        updateLinks(navItems, templateScript);
+    },
+
+
+    /**
+     * Get left menu json from file
+     * templateScript {method} - Handlebars method to populate left menu
+     */
+    setLeftMenuFromJson = function setLeftMenuFromJson(templateScript) {
+        var callback = function callback(resp) {
+            var data = JSON.parse(resp);
+
+            setActiveState(data, templateScript);
+        };
+
+        VeConfigNav.Helpers.loadDataFrom(VeConfigNav.Constants.leftMenuJsonPath, callback);
+    },
+
+
+    /**
+     * Initialisation the left menu using handlebars
+     */
+    initLeftMenu = function initLeftMenu() {
+        var callback = function callback(resp) {
+            var templateScript = Handlebars.compile(resp);
+
+            VeConfigNav.LeftMenu.setLeftMenuFromJson(templateScript);
+        };
+
+        VeConfigNav.Helpers.loadDataFrom(VeConfigNav.Constants.leftMenuTemplatePath, callback);
+    };
+
+    return {
+        toggleSubmenu: toggleSubmenu,
+        setupSubmenus: setupSubmenus,
+        setFromCookie: setFromCookie,
+        setActiveState: setActiveState,
+        setLeftMenuFromJson: setLeftMenuFromJson,
+        initLeftMenu: initLeftMenu
+    };
+}();
+; /**
+  *   Servers Menu Functions
+  *   Date: 09/11/2016
+  *   VeConfig
+  */
+'use strict';
+
+/* global Handlebars, Caretta */
+
+var VeConfigNav = VeConfigNav || {};
+
+VeConfigNav.Servers = function () {
+
+    /**
+     * Set default cookie for API urls of V1
+     */
+    var setV1ApiCookie = function setV1ApiCookie(server) {
+        var domainUrl = window.location.origin,
+            v1DomainUrl = domainUrl.replace('veconfig', 'veconfigv1'),
+            endpoint = v1DomainUrl + '/Split/GenerateV1Data/?server=' + server,
+            callback = function callback(resp) {
+            VeConfigNav.CookieManager.setCookie(VeConfigNav.Constants.v1CurrentApiServerCookie, resp);
+
+            if (VeConfigNav.Helpers.getParameterByName('server')) {
+                VeConfigNav.Customers.deselectCurrentCustomer();
+            }
+        };
+
+        VeConfigNav.Helpers.loadDataFrom(endpoint, callback);
+    },
+
+
+    /**
+     * Set the current server from cookie in the servers object
+     * servers {object}       - servers items object
+     */
+    getFromCookie = function getFromCookie(servers) {
+        var currentServerCookie = void 0;
+
+        if (VeConfigNav.CookieManager.getCookie(VeConfigNav.Constants.currentServerCookie)) {
+            currentServerCookie = JSON.parse(VeConfigNav.CookieManager.getCookie(VeConfigNav.Constants.currentServerCookie));
+            servers.currentServer = currentServerCookie.ServerDisplayName;
+        } else {
+            servers.currentServer = VeConfigNav.Constants.defaultServerDisplayName;
+            VeConfigNav.CookieManager.setCurrentServer(VeConfigNav.Constants.defaultServerName, VeConfigNav.Constants.defaultServerDisplayName);
+            setV1ApiCookie(VeConfigNav.Constants.defaultServerName);
+        }
+        return servers;
+    },
+
+
+    /**
+     * Set the cookie for the current server
+     */
+    changeServer = function changeServer() {
+        var serverFromUrl = VeConfigNav.Helpers.getParameterByName('server');
+
+        if (serverFromUrl && (serverFromUrl.toUpperCase() === 'UK' || serverFromUrl.toUpperCase() === 'USA' || serverFromUrl.toUpperCase() === 'HK')) {
+            VeConfigNav.CookieManager.setCurrentServer(serverFromUrl, serverFromUrl + ' Server');
+            setV1ApiCookie(serverFromUrl.toUpperCase());
+        }
+    },
+
+
+    /**
+     * Get servers json from file
+     * templateScript {method} - Handlebars method to populate servers menu
+     */
+    setServersFromJson = function setServersFromJson(templateScript) {
+        var callback = function callback(resp) {
+            var data = JSON.parse(resp),
+                servers = VeConfigNav.Servers.getFromCookie(data);
+
+            document.getElementById('serversDropdown').innerHTML = templateScript(servers);
+            Caretta.Dropdown.setupSimpleDropdowns();
+        };
+
+        VeConfigNav.Helpers.loadDataFrom(VeConfigNav.Constants.serversJsonPath, callback);
+    },
+
+
+    /**
+     * Initialisation the left menu using handlebars
+     */
+    initServersMenu = function initServersMenu() {
+        var callback = function callback(resp) {
+            var templateScript = Handlebars.compile(resp);
+
+            VeConfigNav.Servers.setServersFromJson(templateScript);
+        };
+
+        VeConfigNav.Helpers.loadDataFrom(VeConfigNav.Constants.serversTemplatePath, callback);
+    };
+
+    return {
+        getFromCookie: getFromCookie,
+        setServersFromJson: setServersFromJson,
+        initServersMenu: initServersMenu,
+        changeServer: changeServer
+    };
+}();
+; /**
+  *   Customers Menu Functions
+  *   Date: 16/11/2016
+  *   VeConfig
+  */
+'use strict';
+
+/* global Handlebars, Caretta */
+/* eslint no-use-before-define: [1] */
+
+var VeConfigNav = VeConfigNav || {};
+
+VeConfigNav.Customers = function () {
+
+    var hostname = window.location.hostname === 'localhost' ? VeConfigNav.Constants.ciBaseUrl : '',
+        customersApiBaseUrl = hostname + '/veconfigcustomers/api/Customers/',
+        currentPageNumber = 1,
+        pageSize = 50,
+        needMoreCustomers = true,
+
+
+    /**
+     * Set the current server from cookie in the servers object
+     * servers {object}       - servers items object
+     * getRecents {boolean}   - include recent customers in the object
+     */
+    getFromCookie = function getFromCookie(customers) {
+        var getRecents = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : true;
+
+        var currentServer = VeConfigNav.CookieManager.getCurrentServer();
+
+        customers.currentCustomer = VeConfigNav.CookieManager.getCookie(VeConfigNav.Constants.currentCustomerNameCookie);
+        if (getRecents && VeConfigNav.CookieManager.getCookie(VeConfigNav.Constants.recentCustomersCookie + '-' + currentServer)) {
+            customers.recents = JSON.parse(VeConfigNav.CookieManager.getCookie(VeConfigNav.Constants.recentCustomersCookie + '-' + currentServer)).reverse();
+        }
+        return customers;
+    },
+
+
+    /**
+     * Call api for more customers and append to current list
+     * templateScript {method} - Handlebars method to populate customers menu
+     */
+    appendMoreCustomers = function appendMoreCustomers(templateScript) {
+        var currentServer = VeConfigNav.CookieManager.getCurrentServer(),
+            searchTerm = document.getElementById('customerSearch').value,
+            endpoint = customersApiBaseUrl + 'GetAll?searchTerms=' + searchTerm + '&page=' + currentPageNumber + '&pageSize=' + pageSize + '&server=' + currentServer,
+            callback = function callback(resp) {
+            var results = {},
+                data = JSON.parse(resp);
+
+            if (data.customers.length === 0) {
+                needMoreCustomers = false;
+                document.getElementById('customersList').style.display = 'block';
+                return;
+            }
+
+            if (searchTerm.trim() === '') {
+                results.customers = data.customers;
+            } else {
+                results.results = data.customers;
+            }
+            document.getElementById('moreCustomers').innerHTML = document.getElementById('moreCustomers').innerHTML + templateScript(data);
+            document.getElementById('customersList').style.display = 'block';
+            currentPageNumber++;
+        };
+
+        VeConfigNav.Helpers.loadDataFrom(endpoint, callback);
+    },
+
+
+    /**
+     * Initialisation more customers in the list
+     */
+    initMoreCustomers = function initMoreCustomers() {
+        var callback = function callback(resp) {
+            var templateScript = Handlebars.compile(resp);
+
+            appendMoreCustomers(templateScript);
+        };
+
+        VeConfigNav.Helpers.loadDataFrom(VeConfigNav.Constants.moreCustomersTemplatePath, callback);
+    },
+
+
+    /**
+     * Load more customers on scroll
+     */
+    loadMore = function loadMore() {
+        var customersList = document.getElementById('customersList'),
+            distanceToBottom = customersList.scrollHeight - customersList.scrollTop - 390;
+
+        if (distanceToBottom < 50 && needMoreCustomers === true) {
+            document.getElementById('customersList').style.display = 'none';
+            initMoreCustomers();
+        }
+    },
+
+
+    /**
+     * Setup scroll event on customer list content
+     */
+    onScrollList = function onScrollList() {
+        document.getElementById('customersList').addEventListener('scroll', loadMore);
+    },
+
+
+    /**
+     * Update customers list
+     * list {object}       - list of customers
+     */
+    updateCustomersMenu = function updateCustomersMenu(list) {
+        var callback = function callback(resp) {
+            var templateScript = Handlebars.compile(resp),
+                currentSearchTerm = document.getElementById('customerSearch').value;
+
+            document.getElementById('customersDropdown').innerHTML = templateScript(list);
+            document.getElementById('customerSearch').focus();
+            document.getElementById('customerSearch').value = currentSearchTerm;
+            searchCustomer();
+            onScrollList();
+            Caretta.Dropdown.setupSimpleDropdowns();
+        };
+
+        VeConfigNav.Helpers.loadDataFrom(VeConfigNav.Constants.customersTemplatePath, callback);
+    },
+
+
+    /**
+     * Search customer by name
+     */
+    searchCustomer = function searchCustomer() {
+        document.getElementById('customerSearch').addEventListener('keyup', function () {
+            VeConfigNav.Helpers.delay(function () {
+                currentPageNumber = 1;
+                var currentServer = VeConfigNav.CookieManager.getCurrentServer(),
+                    searchTerm = document.getElementById('customerSearch').value,
+                    endpoint = customersApiBaseUrl + 'GetAll?searchTerms=' + searchTerm + '&page=1&pageSize=' + pageSize + '&server=' + currentServer,
+                    callback = function callback(resp) {
+                    var results = {},
+                        data = JSON.parse(resp);
+
+                    needMoreCustomers = data.customers.length === pageSize;
+                    if (searchTerm.trim() === '') {
+                        results.customers = data.customers;
+                    } else {
+                        if (data.customers.length) {
+                            results.results = data.customers;
+                        } else {
+                            results.noResult = true;
+                        }
+                    }
+                    results = getFromCookie(results);
+                    updateCustomersMenu(results);
+                    currentPageNumber++;
+                };
+
+                document.getElementById('customersList').style.display = 'none';
+                VeConfigNav.Helpers.loadDataFrom(endpoint, callback);
+            }, 500);
+        });
+    },
+
+
+    /**
+     * Set new customer to recents list
+     * customerName {string}        - customer name
+     * customerId {string}          - customer id
+     */
+    setNewRecentCustomer = function setNewRecentCustomer(customerName, customerId) {
+        var recentCustomers = [],
+            currentServer = VeConfigNav.CookieManager.getCurrentServer();
+
+        if (VeConfigNav.CookieManager.getCookie(VeConfigNav.Constants.recentCustomersCookie + '-' + currentServer)) {
+            recentCustomers = JSON.parse(VeConfigNav.CookieManager.getCookie(VeConfigNav.Constants.recentCustomersCookie + '-' + currentServer));
+        }
+        recentCustomers.forEach(function (recent, index) {
+            if (recent.id === customerId) {
+                recentCustomers.splice(index, 1);
+                return;
+            }
+        });
+        if (recentCustomers.length > 4) {
+            recentCustomers.splice(0, 1);
+        }
+        recentCustomers.push({ id: customerId, name: customerName });
+
+        return JSON.stringify(recentCustomers);
+    },
+
+
+    /**
+     * Set the cookie for the current server
+     */
+    selectCustomer = function selectCustomer() {
+        var customerName = VeConfigNav.Helpers.getParameterByName('customerName'),
+            customerId = VeConfigNav.Helpers.getParameterByName('customerId'),
+            recentCustomers = void 0,
+            currentServer = void 0,
+            endpoint = void 0,
+            callback = void 0;
+
+        if (customerName && customerId) {
+            document.getElementById('page-preloader').style.display = 'block';
+            recentCustomers = setNewRecentCustomer(customerName, customerId);
+            currentServer = VeConfigNav.CookieManager.getCurrentServer();
+            endpoint = customersApiBaseUrl + 'GetCurrentCustomerEncrypted?id=' + customerId + '&server=' + currentServer;
+            callback = function callback(resp) {
+                VeConfigNav.CookieManager.setCookie(VeConfigNav.Constants.currentCustomerEncryptedCookie, resp);
+                window.location.href = window.location.origin;
+            };
+
+            VeConfigNav.CookieManager.setCookie(VeConfigNav.Constants.currentCustomerNameCookie, customerName);
+            VeConfigNav.CookieManager.setCookie(VeConfigNav.Constants.recentCustomersCookie + '-' + currentServer, recentCustomers);
+            VeConfigNav.Helpers.loadDataFrom(endpoint, callback);
+        }
+    },
+
+
+    /**
+     * Get customers json from api
+     * templateScript {method} - Handlebars method to populate customers menu
+     */
+    setCustomersFromJson = function setCustomersFromJson(templateScript) {
+        var currentServer = VeConfigNav.CookieManager.getCurrentServer(),
+            endpoint = customersApiBaseUrl + 'GetAll?searchTerms=&page=1&pageSize=' + pageSize + '&server=' + currentServer,
+            callback = function callback(resp) {
+            var customers = getFromCookie(JSON.parse(resp));
+
+            document.getElementById('customersDropdown').innerHTML = templateScript(customers);
+            Caretta.Dropdown.setupSimpleDropdowns();
+            searchCustomer();
+            onScrollList();
+            currentPageNumber++;
+        };
+
+        VeConfigNav.Helpers.loadDataFrom(endpoint, callback);
+    },
+
+
+    /**
+     * Initialisation the customers list using handlebars
+     */
+    loadCustomersList = function loadCustomersList() {
+        var callback = function callback(resp) {
+            var templateScript = Handlebars.compile(resp);
+
+            document.getElementById('customersList').remove();
+            setCustomersFromJson(templateScript);
+        };
+
+        VeConfigNav.Helpers.loadDataFrom(VeConfigNav.Constants.customersTemplatePath, callback);
+    },
+
+
+    /**
+     * Initialisation the customers dropdown using handlebars
+     */
+    initCustomersMenu = function initCustomersMenu() {
+        var callback = function callback(resp) {
+            var templateScript = Handlebars.compile(resp),
+                customers = getFromCookie({}, false);
+
+            document.getElementById('customersDropdown').innerHTML = templateScript(customers);
+            if (window.location.pathname === '/') {
+                loadCustomersList();
+            } else {
+                document.getElementById('openCustomersList').addEventListener('click', loadCustomersList);
+            }
+            Caretta.Dropdown.setupSimpleDropdowns();
+        };
+
+        VeConfigNav.Helpers.loadDataFrom(VeConfigNav.Constants.customersTemplatePath, callback);
+    },
+
+
+    /**
+     * Clear current customer
+     */
+    deselectCurrentCustomer = function deselectCurrentCustomer() {
+        VeConfigNav.CookieManager.deleteCookie(VeConfigNav.Constants.currentCustomerNameCookie);
+        VeConfigNav.CookieManager.deleteCookie(VeConfigNav.Constants.currentCustomerEncryptedCookie);
+        window.location.href = window.location.origin;
+    },
+
+
+    /**
+     * Deselect current customer on home click
+     */
+    clearCurrentCustomer = function clearCurrentCustomer() {
+        document.getElementById('veConfigLogo').addEventListener('click', function (e) {
+            e.preventDefault();
+            deselectCurrentCustomer();
+        });
+    };
+
+    return {
+        getFromCookie: getFromCookie,
+        setCustomersFromJson: setCustomersFromJson,
+        initCustomersMenu: initCustomersMenu,
+        deselectCurrentCustomer: deselectCurrentCustomer,
+        clearCurrentCustomer: clearCurrentCustomer,
+        searchCustomer: searchCustomer,
+        selectCustomer: selectCustomer
+    };
+}();
+; /**
+  *   Init Functions
+  *   Date: 31/10/2016
+  *   VeConfig
+  */
+'use strict';
+
+var VeConfigNav = VeConfigNav || {};
+
+VeConfigNav.Init = function () {
+    VeConfigNav.Helpers.ifInArrayHandlebars();
+    VeConfigNav.Helpers.ifConditionHandlebars();
+    VeConfigNav.Helpers.currentUrlOrigin();
+    VeConfigNav.Helpers.encodeThis();
+    VeConfigNav.Servers.initServersMenu();
+    VeConfigNav.Servers.changeServer();
+    VeConfigNav.Customers.initCustomersMenu();
+    VeConfigNav.Customers.clearCurrentCustomer();
+    VeConfigNav.Customers.selectCustomer();
+    VeConfigNav.LeftMenu.initLeftMenu();
+    VeConfigNav.CookieManager.setCurrentUser();
+}();
+
+window.onload = VeConfigNav.Init;
